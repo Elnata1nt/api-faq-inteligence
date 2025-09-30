@@ -1,34 +1,25 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { IaFaqService } from './ia-faq.service';
+import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { CreateIaFaqDto } from './dto/create-ia-faq.dto';
-import { UpdateIaFaqDto } from './dto/update-ia-faq.dto';
+import { IaMessageService } from './ia-faq.service';
 
-@Controller('ia-faq')
-export class IaFaqController {
-  constructor(private readonly iaFaqService: IaFaqService) {}
+@Controller('api/chat')
+export class IaMessageController {
+  constructor(private readonly iaMessageService: IaMessageService) {}
 
   @Post()
-  create(@Body() createIaFaqDto: CreateIaFaqDto) {
-    return this.iaFaqService.create(createIaFaqDto);
-  }
+  async chat(@Body() body: CreateIaFaqDto) {
+    const { message, sessionId } = body;
 
-  @Get()
-  findAll() {
-    return this.iaFaqService.findAll();
-  }
+    if (!message || typeof message !== 'string' || message.trim() === '') {
+      throw new BadRequestException('Message is required and must be a string');
+    }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.iaFaqService.findOne(+id);
-  }
+    const { response, sessionId: returnedSessionId } =
+      await this.iaMessageService.getChatCompletion(message, sessionId);
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateIaFaqDto: UpdateIaFaqDto) {
-    return this.iaFaqService.update(+id, updateIaFaqDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.iaFaqService.remove(+id);
+    return {
+      response,
+      sessionId: returnedSessionId,
+    };
   }
 }

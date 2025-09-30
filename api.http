@@ -1,0 +1,7 @@
+### API Chat - Mensagem Simples
+POST http://localhost:9000/api/chat
+Content-Type: application/json
+
+{
+  "message": "qual seu objetivo?"
+}

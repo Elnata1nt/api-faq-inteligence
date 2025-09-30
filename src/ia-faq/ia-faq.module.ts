@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
-import { IaFaqService } from './ia-faq.service';
-import { IaFaqController } from './ia-faq.controller';
+import { IaMessageService } from './ia-faq.service';
+import { IaMessageController } from './ia-faq.controller';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  controllers: [IaFaqController],
-  providers: [IaFaqService],
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
+  controllers: [IaMessageController],
+  providers: [IaMessageService],
 })
 export class IaFaqModule {}
