@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { IaMessageService } from './ia-faq.service';
 import { IaMessageController } from './ia-faq.controller';
-import { ConfigModule } from '@nestjs/config';
+import { RagModule } from 'src/raq/raq.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true })],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), RagModule],
   controllers: [IaMessageController],
   providers: [IaMessageService],
 })

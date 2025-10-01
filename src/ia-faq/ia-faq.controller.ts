@@ -1,4 +1,4 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, BadRequestException, Body } from '@nestjs/common';
 import { CreateIaFaqDto } from './dto/create-ia-faq.dto';
 import { IaMessageService } from './ia-faq.service';
 

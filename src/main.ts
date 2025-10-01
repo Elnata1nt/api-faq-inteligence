@@ -9,7 +9,7 @@ async function bootstrap() {
     origin: [
       'https://elnata-nexa-ia-frontend.cc6xgb.easypanel.host',
       'https://elnata-holodeckhubb.cc6xgb.easypanel.host',
-      'http://localhost:9000',
+      'http://localhost:8000',
       'http://localhost:3000',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
@@ -18,7 +18,7 @@ async function bootstrap() {
     preflightContinue: false,
   });
 
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 9000;
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 8000;
 
   await app.listen(port);
   console.log(`Server is running on port ${port}`);

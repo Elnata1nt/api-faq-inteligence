@@ -1,7 +1,19 @@
 ### API Chat - Mensagem Simples
-POST http://localhost:9000/api/chat
+POST http://localhost:8000/api/chat
 Content-Type: application/json
 
 {
-  "message": "qual seu objetivo?"
+  "message": "me fale do edital?"
 }
+
+### API RAG - Upload de arquivo DOCX
+POST http://localhost:8000/api/rag/upload
+Content-Type: multipart/form-data
+
+Content-Disposition: form-data; name="file"; filename="exemplo.docx"
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+
+### API RAG - Reindexar último DOCX
+POST http://localhost:8000/api/rag/reindex-latest
+Content-Type: application/json
