@@ -1,11 +1,10 @@
-### API Chat - Mensagem Simples
+### API Chat - Outra Pergunta
 POST http://localhost:8000/api/chat
 Content-Type: application/json
 
 {
-  "message": "me fale do edital?"
+  "message": "sobre o que é o edital?"
 }
-
 ### API RAG - Upload de arquivo DOCX
 POST http://localhost:8000/api/rag/upload
 Content-Type: multipart/form-data

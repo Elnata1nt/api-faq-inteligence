@@ -1,0 +1,91 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Documentos enviados para o sistema RAG
+model Document {
+  id          String   @id @default(uuid())
+  filename    String
+  originalName String
+  filepath    String
+  filesize    Int
+  mimeType    String   @default("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+  content     String   @db.Text // Conteúdo extraído do documento
+  indexed     Boolean  @default(false)
+  uploadedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamento com chunks (para busca vetorial futura)
+  chunks      DocumentChunk[]
+
+  @@index([indexed])
+  @@index([uploadedAt])
+  @@map("documents")
+}
+
+// Chunks de documentos para busca mais granular
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  documentId String
+  content    String   @db.Text
+  chunkIndex Int
+  createdAt  DateTime @default(now())
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_chunks")
+}
+
+// Sessões de chat
+model ChatSession {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages  Message[]
+
+  @@index([createdAt])
+  @@map("chat_sessions")
+}
+
+// Mensagens do chat
+model Message {
+  id        String   @id @default(uuid())
+  sessionId String
+  role      String   // 'user' ou 'assistant'
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  // Metadados opcionais
+  metadata  Json?    // Para armazenar contexto, documentos usados, etc.
+
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// FAQs do sistema IA
+model IaFaq {
+  id        String   @id @default(uuid())
+  question  String   @db.Text
+  answer    String   @db.Text
+  category  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([category])
+  @@map("ia_faqs")
+}

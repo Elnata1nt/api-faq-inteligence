@@ -1,11 +1,10 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Groq from 'groq-sdk';
+import { PrismaService } from '../prisma/prisma.service';
+import { RagService } from 'src/raq/rag.service';
 import { OUT_OF_SCOPE_REPLY } from 'src/raq/rag.constants';
-import { RagService } from 'src/raq/raq.service';
-import { v4 as uuidv4 } from 'uuid';
+import { ChatSession, Message } from '@prisma/client';
 
 interface Choice {
   message: {
@@ -17,12 +16,6 @@ interface GroqResponse {
   choices: Choice[];
 }
 
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt: Date;
-}
-
 interface GroqMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -31,11 +24,11 @@ interface GroqMessage {
 @Injectable()
 export class IaMessageService {
   private groq: Groq;
-  private conversationHistory: Map<string, Message[]> = new Map();
 
   constructor(
-    private configService: ConfigService, // sem 'type'
+    private configService: ConfigService,
     private readonly rag: RagService,
+    private readonly prisma: PrismaService,
   ) {
     const apiKey = this.configService.get<string>('GROQ_API_KEY');
     if (!apiKey) {
@@ -46,24 +39,15 @@ export class IaMessageService {
     this.groq = new Groq({ apiKey });
   }
 
-  private generateUuid(): string {
-    const id: string = uuidv4();
-    return id;
-  }
+  private async buildMessageHistory(sessionId: string): Promise<GroqMessage[]> {
+    const messages: Message[] = await this.prisma.message.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
 
-  private addMessageToHistory(sessionId: string, message: Message): void {
-    const history = this.conversationHistory.get(sessionId) || [];
-    history.push(message);
-    this.conversationHistory.set(sessionId, history);
-  }
-
-  private buildMessageHistory(sessionId: string): GroqMessage[] {
-    const history = this.conversationHistory.get(sessionId) || [];
-    const recentHistory = history
-      .slice(-20)
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    return recentHistory.map((msg) => ({
-      role: msg.role,
+    return messages.reverse().map((msg) => ({
+      role: msg.role as 'user' | 'assistant',
       content: msg.content,
     }));
   }
@@ -73,31 +57,49 @@ export class IaMessageService {
     sessionId?: string,
   ): Promise<{ response: string; sessionId: string }> {
     try {
-      if (!sessionId) {
-        sessionId = this.generateUuid();
+      let session: ChatSession;
+
+      // Cria ou busca a sessão
+      if (sessionId) {
+        const found = await this.prisma.chatSession.findUnique({
+          where: { id: sessionId },
+        });
+        session =
+          found ||
+          (await this.prisma.chatSession.create({ data: { id: sessionId } }));
+      } else {
+        session = await this.prisma.chatSession.create({ data: {} });
+        sessionId = session.id;
       }
 
-      const userMessage: Message = {
-        role: 'user',
-        content: message,
-        createdAt: new Date(),
-      };
+      // Salva a mensagem do usuário
+      await this.prisma.message.create({
+        data: { sessionId: session.id, role: 'user', content: message },
+      });
 
-      this.addMessageToHistory(sessionId, userMessage);
+      // Garante que o índice BM25 esteja consolidado antes da busca
+      if (!this.rag.isConsolidated()) {
+        this.rag.consolidateIndex();
+      }
 
-      // 🔎 Recupera contexto do RAG
       const context = this.rag.getContextOrNull(message);
 
+      // Se não houver contexto, retorna resposta padrão
       if (!context) {
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: OUT_OF_SCOPE_REPLY,
-          createdAt: new Date(),
-        };
-        this.addMessageToHistory(sessionId, assistantMessage);
-        return { response: OUT_OF_SCOPE_REPLY, sessionId };
+        const assistantMessage = OUT_OF_SCOPE_REPLY;
+
+        await this.prisma.message.create({
+          data: {
+            sessionId: session.id,
+            role: 'assistant',
+            content: assistantMessage,
+          },
+        });
+
+        return { response: assistantMessage, sessionId: session.id };
       }
 
+      // Monta histórico e sistema para Groq
       const messagesForGroq: GroqMessage[] = [
         {
           role: 'system',
@@ -111,9 +113,10 @@ ${context}
 ---
           `.trim(),
         },
-        ...this.buildMessageHistory(sessionId),
+        ...(await this.buildMessageHistory(session.id)),
       ];
 
+      // Consulta a API da Groq
       const response = (await this.groq.chat.completions.create({
         messages: messagesForGroq,
         model: 'meta-llama/llama-4-scout-17b-16e-instruct',
@@ -122,22 +125,45 @@ ${context}
       const generatedResponse =
         response.choices[0]?.message?.content ?? 'Sem resposta da IA.';
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: generatedResponse,
-        createdAt: new Date(),
-      };
+      // Salva resposta da IA
+      await this.prisma.message.create({
+        data: {
+          sessionId: session.id,
+          role: 'assistant',
+          content: generatedResponse,
+          metadata: {
+            hasContext: !!context,
+            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+          },
+        },
+      });
 
-      this.addMessageToHistory(sessionId, assistantMessage);
-
-      return { response: generatedResponse, sessionId };
+      return { response: generatedResponse, sessionId: session.id };
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error('Erro na API da Groq:', error.message);
-      } else {
-        console.error('Erro desconhecido na API da Groq:', error);
-      }
+      console.error(
+        'Erro na API da Groq:',
+        error instanceof Error ? error.message : error,
+      );
       throw new InternalServerErrorException('Erro ao consultar a API da Groq');
     }
+  }
+
+  async getSession(sessionId: string) {
+    return this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: { messages: { orderBy: { createdAt: 'asc' } } },
+    });
+  }
+
+  async getAllSessions() {
+    return this.prisma.chatSession.findMany({
+      orderBy: { updatedAt: 'desc' },
+      include: { _count: { select: { messages: true } } },
+    });
+  }
+
+  async deleteSession(sessionId: string) {
+    await this.prisma.chatSession.delete({ where: { id: sessionId } });
+    return { ok: true };
   }
 }

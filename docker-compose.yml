@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpassword
+      POSTGRES_DB: ragdb
+    ports:
+      - "51214:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./uploads:/app/uploads
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U raguser -d ragdb']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Opcional: pgAdmin para gerenciar o banco visualmente
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: rag-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@rag.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - '5050:80'
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+    driver: local
